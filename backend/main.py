@@ -1,12 +1,21 @@
+from backend.database import init_db
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from backend.agents.langgraph_graph import build_graphs, memory
+
+from backend.agents.langgraph_graph import (
+    build_graphs,
+    memory
+)
+
 from backend.nlu import parse_user_input
 
-app = FastAPI(title="Study Assistant Multi-Agent System")
+app = FastAPI(
+    title="Study Assistant Multi-Agent System"
+)
 
+init_db()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,47 +26,120 @@ app.add_middleware(
 
 graphs = build_graphs()
 
+# ---------------- REQUEST MODEL ----------------
+
 class StudyRequest(BaseModel):
     user_input: str
+
     student_answers: list[str] = []
+
     num_questions: Optional[int] = None
+
     quiz: Optional[list] = None
+
+
+# ---------------- MAIN ENDPOINT ----------------
 
 @app.post("/process/")
 def process_user_input(request: StudyRequest):
+
     try:
-        parsed = parse_user_input(request.user_input)
+        parsed = parse_user_input(
+            request.user_input
+        )
+
         intent = parsed["intent"]
+
         topic = parsed["topic"]
-        num = request.num_questions or parsed["num_questions"] or 4
+
+        difficulty = parsed.get(
+            "difficulty",
+            "medium"
+        )
+
+        num_questions = (
+            request.num_questions
+            or parsed["num_questions"]
+            or 4
+        )
+
+        payload = {
+            "topic": topic,
+            "difficulty": difficulty,
+            "num_questions": num_questions,
+            "student_answers": request.student_answers,
+            "quiz": request.quiz,
+        }
+
+        # -------- ROUTING --------
 
         if intent == "explain":
-            graph, payload = graphs["explain"], {"topic": topic}
+
+            result = graphs["explain"].invoke(
+                payload
+            )
 
         elif intent == "quiz":
-            graph, payload = graphs["quiz"], {"topic": topic, "num_questions": num}
+
+            result = graphs["quiz"].invoke(
+                payload
+            )
 
         elif intent == "evaluate":
-            graph, payload = graphs["evaluate"], {"topic": topic, "student_answers": request.student_answers, "quiz": request.quiz}
+
+            result = graphs["evaluate"].invoke(
+                payload
+            )
 
         elif intent == "recall":
-            graph, payload = graphs["recall"], {"topic": topic}
+
+            result = graphs["recall"].invoke(
+                payload
+            )
 
         else:
-            graph, payload = graphs["full"], {"topic": topic, "num_questions": num, "student_answers": request.student_answers}
 
-        result = graph.invoke(payload)
-        message = f"🧭 Intent: {intent} | 🧩 Topic: {topic}" + (f" | 🧮 Questions: {num}" if intent == 'quiz' else "")
+            result = graphs["full"].invoke(
+                payload
+            )
 
-        return {"intent": intent, "topic": topic, "num_questions": num, "result": result, "message": message}
+        return {
+            "intent": intent,
+            "topic": topic,
+            "difficulty": difficulty,
+            "num_questions": num_questions,
+            "result": result,
+            "message":
+                f"Intent={intent} | "
+                f"Topic={topic} | "
+                f"Difficulty={difficulty}"
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Error: {e}")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal Error: {e}"
+        )
+
+
+# ---------------- HEALTH CHECK ----------------
 
 @app.get("/")
 def root():
-    return {"message": "✅ Study Assistant Backend running with persistent memory."}
+
+    return {
+        "message":
+        "✅ Study Assistant Backend running."
+    }
+
+
+# ---------------- MEMORY VIEW ----------------
 
 @app.get("/memory")
 def show_memory():
-    return {"chat_history": memory.load_memory_variables({})}
+
+    return {
+        "chat_history":
+        memory.load_memory_variables({})
+    }
