@@ -193,14 +193,10 @@ Example:
         time.sleep(0.3)
 
     if not quiz:
-
-        quiz = [
-            {
-                "question": f"Describe {topic}",
-                "answer": "General explanation"
-            }
-        ]
-
+         raise ValueError(
+        f"Failed to generate quiz for topic: {topic}"
+    )
+    
     memory.save_context(
         {"user": f"quiz:{topic}:{difficulty}"},
         {"assistant": json.dumps(quiz)}
@@ -240,16 +236,24 @@ def eval_node(state, *_):
     )
 
     if not quiz:
-        quiz = get_latest_quiz()
 
-    if not quiz:
-        return {
-            "evaluation": {
-                "score": 0,
-                "total": 0,
-                "feedback": ["No quiz found."]
+        latest_quiz = get_latest_quiz()
+
+        if latest_quiz:
+
+            quiz = latest_quiz
+
+        else:
+
+            return {
+                "evaluation": {
+                    "score": 0,
+                    "total": 0,
+                    "feedback": [
+                        "No quiz found."
+                    ]
+                }
             }
-        }
 
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -291,6 +295,7 @@ ANSWERS:
         )
 
     except Exception:
+
         evaluation = None
 
     if not evaluation:
@@ -307,35 +312,28 @@ ANSWERS:
     percentage = (score / total) * 100
 
     if percentage < 40:
+
         difficulty = "easy"
-        recommendation = (
-            "Try EASY questions next."
-        )
+        recommendation = "Try EASY questions next."
 
     elif percentage < 80:
+
         difficulty = "medium"
-        recommendation = (
-            "Continue with MEDIUM questions."
-        )
+        recommendation = "Continue with MEDIUM questions."
 
     else:
+
         difficulty = "hard"
-        recommendation = (
-            "Try HARD questions next."
-        )
+        recommendation = "Try HARD questions next."
 
     evaluation["percentage"] = round(
         percentage,
         2
     )
 
-    evaluation["recommended_difficulty"] = (
-        difficulty
-    )
+    evaluation["recommended_difficulty"] = difficulty
 
-    evaluation["recommendation"] = (
-        recommendation
-    )
+    evaluation["recommendation"] = recommendation
 
     memory.save_context(
         {"user": "evaluation"},
@@ -352,7 +350,6 @@ ANSWERS:
     return {
         "evaluation": evaluation
     }
-
 
 # ---------------- RECALL NODE ----------------
 
