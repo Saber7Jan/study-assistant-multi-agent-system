@@ -1,6 +1,7 @@
 from backend.database import (
     init_db,
-    get_recommended_difficulty
+    get_recommended_difficulty,
+    get_recent_scores
 )
 
 from fastapi import FastAPI, HTTPException
@@ -173,4 +174,21 @@ def adaptive():
     return {
         "recommended_difficulty":
         get_recommended_difficulty()
+    }
+
+@app.get("/dashboard")
+def dashboard():
+
+    scores = get_recent_scores()
+
+    avg_score = (
+        round(sum(scores) / len(scores), 2)
+        if scores else 0
+    )
+
+    return {
+        "total_quizzes": len(scores),
+        "average_score": avg_score,
+        "recommended_difficulty": get_recommended_difficulty(),
+        "scores": scores
     }

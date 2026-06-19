@@ -1,149 +1,359 @@
 import streamlit as st
 import requests
-import json
-import time
+import pandas as pd
 
-API_URL = "http://127.0.0.1:8000/process/"
+API_URL = "http://127.0.0.1:8000"
 
-# -------------------- SESSION STATE INIT --------------------
-if "quiz" not in st.session_state:
-    st.session_state.quiz = []
-if "current_q" not in st.session_state:
-    st.session_state.current_q = 0
-if "answers" not in st.session_state:
-    st.session_state.answers = []
-if "mode" not in st.session_state:
-    st.session_state.mode = None
-if "intent" not in st.session_state:
-    st.session_state.intent = ""
-if "topic" not in st.session_state:
-    st.session_state.topic = ""
-if "evaluation" not in st.session_state:
-    st.session_state.evaluation = {}
+# ==================================================
+# PAGE CONFIG
+# ==================================================
 
-st.title("📘 Study Assistant (LangGraph + FastAPI)")
+st.set_page_config(
+    page_title="AI Study Assistant",
+    page_icon="📘",
+    layout="wide"
+)
 
-# -------------------- MAIN INPUT --------------------
-user_input = st.text_input("Enter your request:", key="user_prompt")
+# ==================================================
+# HEADER
+# ==================================================
 
-# Handle request safely
-if st.button("Run Assistant"):
-    with st.spinner("🤖 Thinking..."):
-        try:
-            res = requests.post(API_URL, json={"user_input": user_input, "student_answers": []})
-            if res.status_code != 200:
-                st.error(f"❌ Server Error: {res.status_code}")
-                st.stop()
-            data = res.json()
-        except Exception as e:
-            st.error(f"❌ Connection Error: {e}")
-            st.stop()
+st.title("📘 AI Study Assistant")
 
-    # Extract safely
-    intent = data.get("intent", "")
-    topic = data.get("topic", "")
-    st.session_state.intent = intent
-    st.session_state.topic = topic
+st.caption("LangGraph + FastAPI + Gemini + SQLite")
 
-    result = data.get("result", data)
-    st.session_state.result = result
+st.markdown(
+"""
+### Welcome
 
-    # Display intent/topic info
-    if intent:
-        st.markdown(f"🧠 **Intent:** {intent.capitalize()}  |  🏷️ **Topic:** {topic}")
+This platform provides:
 
-    # Handle explanation
-    if intent == "explain" and "explanation" in result:
-        st.session_state.mode = "explain"
-        st.write(result.get("explanation", "No explanation found."))
+✅ AI Topic Explanations  
+✅ Adaptive Quiz Generation  
+✅ Automatic Evaluation  
+✅ Quiz Recall  
+✅ Learning Analytics Dashboard  
+✅ Personalized Difficulty Recommendation  
+"""
+)
 
-    # Handle quiz
-    elif intent == "quiz" and "quiz" in result:
-        quiz_list = result.get("quiz", [])
-        if not isinstance(quiz_list, list):
+# ==================================================
+# SIDEBAR
+# ==================================================
+
+st.sidebar.title("📘 Study Assistant")
+st.sidebar.markdown("---")
+
+page = st.sidebar.radio(
+    "Navigation",
+    [
+        "Explain Topic",
+        "Generate Quiz",
+        "Recall Quiz",
+        "Progress Dashboard"
+    ]
+)
+
+st.sidebar.markdown("---")
+
+st.sidebar.caption("AI-Powered Learning Platform")
+
+try:
+    adaptive = requests.get(f"{API_URL}/adaptive").json()
+
+    st.sidebar.metric(
+        "Recommended Difficulty",
+        adaptive.get("recommended_difficulty", "medium")
+    )
+
+except:
+    pass
+
+
+# ==================================================
+# EXPLAIN PAGE
+# ==================================================
+
+if page == "Explain Topic":
+
+    st.header("📖 Explain a Topic")
+
+    topic = st.text_input(
+        "Topic",
+        placeholder="Machine Learning"
+    )
+
+    if st.button("Explain"):
+
+        if not topic.strip():
+            st.warning("Please enter a topic.")
+
+        else:
             try:
-                quiz_list = json.loads(quiz_list)
-            except Exception:
-                quiz_list = [{"question": str(quiz_list)}]
+                response = requests.post(
+                    f"{API_URL}/process/",
+                    json={
+                        "user_input": f"explain {topic}"
+                    }
+                )
 
-        st.session_state.quiz = quiz_list
-        st.session_state.mode = "quiz"
-        st.session_state.current_q = 0
-        st.session_state.answers = []
+                data = response.json()
 
-        st.success(f"📝 Quiz created with {len(quiz_list)} questions!")
-        time.sleep(0.5)
-        st.rerun()
+                explanation = (
+                    data.get("result", {})
+                    .get("explanation", "")
+                )
 
-    # Handle recall intent
-    elif intent == "recall" and "quiz" in result:
-        st.session_state.quiz = result.get("quiz", [])
-        st.session_state.mode = "quiz"
-        st.info("📚 Retrieved your last quiz from memory.")
-        st.rerun()
+                st.success("Explanation Generated")
 
-    # Handle evaluation
-    elif intent == "evaluate" and "evaluation" in result:
-        st.session_state.mode = "evaluation"
-        st.session_state.evaluation = result.get("evaluation", {})
-        st.rerun()
+                st.markdown("## 📖 Explanation")
+                st.info(explanation)
 
-    else:
-        st.warning("🤔 No valid output received from backend.")
+                # SAVE TOPIC
+                st.session_state.last_topic = topic
 
-# -------------------- QUIZ FLOW --------------------
-if st.session_state.mode == "quiz" and st.session_state.quiz:
-    quiz = st.session_state.quiz
-    q_index = st.session_state.current_q
-    total = len(quiz)
-
-    st.markdown(f"🧠 **Intent:** Quiz  |  🏷️ **Topic:** {st.session_state.topic}")
-
-    if q_index < total:
-        question = quiz[q_index].get("question", f"Question {q_index+1}")
-        st.markdown(f"**Question {q_index+1} of {total}:** {question}")
-
-        answer = st.text_input("Your answer:", key=f"answer_{q_index}")
-        if st.button("Submit Answer", key=f"submit_{q_index}"):
-            if not answer.strip():
-                st.warning("⚠️ Please enter an answer before submitting.")
-            else:
-                st.session_state.answers.append(answer)
-                st.session_state.current_q += 1
-                st.rerun()
-    else:
-        st.info("✅ All questions answered! Evaluating your responses...")
-        with st.spinner("🧩 Evaluating..."):
-            try:
-                res = requests.post(API_URL, json={
-                    "user_input": "evaluate",
-                    "student_answers": st.session_state.answers
-                })
-                data = res.json()
-                eval_result = data.get("result", {}).get("evaluation", {})
-                if isinstance(eval_result, list):
-                    eval_result = {"score": 0, "total": len(eval_result), "feedback": eval_result}
-                st.session_state.evaluation = eval_result
-                st.session_state.mode = "evaluation"
-                time.sleep(0.5)
-                st.rerun()
             except Exception as e:
-                st.error(f"❌ Evaluation Error: {e}")
+                st.error(f"Error: {e}")
 
-# -------------------- EVALUATION FLOW --------------------
-if st.session_state.mode == "evaluation" and st.session_state.evaluation:
-    ev = st.session_state.evaluation
-    st.subheader("📊 Evaluation Results")
-    st.markdown(f"🧠 **Intent:** Evaluate  |  🏷️ **Topic:** {st.session_state.topic}")
 
-    if isinstance(ev, dict):
-        st.success(f"Your Score: {ev.get('score', 0)}/{ev.get('total', 0)}")
-        for f in ev.get("feedback", []):
-            st.markdown(f"""
-            **Q:** {f.get('question', '')}  
-            🧍‍♂️ *Your answer:* {f.get('student_answer', '')}  
-            **Result:** {f.get('result', '')}  
-            💬 {f.get('comment', '')}
-            """)
-    else:
-        st.warning("⚠️ Evaluation format not recognized.")
+# ==================================================
+# QUIZ PAGE
+# ==================================================
+
+elif page == "Generate Quiz":
+
+    st.header("📝 Generate Quiz")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        topic = st.text_input("Topic", placeholder="Python")
+
+    with col2:
+        difficulty = st.selectbox(
+            "Difficulty",
+            ["easy", "medium", "hard"]
+        )
+
+    num_questions = st.slider(
+        "Number of Questions",
+        1,
+        10,
+        5
+    )
+
+    if st.button("Generate Quiz"):
+
+        if not topic.strip():
+            st.warning("Please enter a topic.")
+
+        else:
+            try:
+                response = requests.post(
+                    f"{API_URL}/process/",
+                    json={
+                        "user_input": f"quiz {topic} {difficulty}",
+                        "num_questions": num_questions
+                    }
+                )
+
+                data = response.json()
+
+                st.session_state.quiz = (
+                    data.get("result", {})
+                    .get("quiz", [])
+                )
+
+                # SAVE TOPIC
+                st.session_state.last_topic = topic
+
+                st.success("Quiz Generated Successfully")
+
+            except Exception as e:
+                st.error(f"Quiz Error: {e}")
+
+    if "quiz" in st.session_state and st.session_state.quiz:
+
+        quiz = st.session_state.quiz
+
+        st.subheader("Answer the Questions")
+
+        answers = []
+
+        for i, q in enumerate(quiz):
+
+            st.markdown(f"### Question {i+1}")
+
+            st.write(q.get("question", "No question"))
+
+            answer = st.text_input(
+                "Your Answer",
+                key=f"answer_{i}"
+            )
+
+            answers.append(answer)
+
+        if st.button("Submit Quiz"):
+
+            try:
+                response = requests.post(
+                    f"{API_URL}/process/",
+                    json={
+                        "user_input": "evaluate",
+                        "quiz": quiz,
+                        "student_answers": answers
+                    }
+                )
+
+                result = response.json()
+
+                evaluation = result.get("result", {}).get("evaluation", {})
+
+                score = evaluation.get("score", 0)
+                total = evaluation.get("total", 0)
+
+                percentage = (
+                    round(score * 100 / total, 2)
+                    if total > 0 else 0
+                )
+
+                st.success(f"Score: {score}/{total}")
+                st.metric("Percentage", f"{percentage}%")
+
+                # PERFORMANCE STATUS CARD
+                if percentage >= 80:
+                    st.success("Excellent Performance 🚀")
+                elif percentage >= 50:
+                    st.warning("Good Progress 📈")
+                else:
+                    st.error("Needs Improvement 📚")
+
+                st.info(evaluation.get("recommendation", ""))
+
+                st.subheader("Detailed Feedback")
+
+                for item in evaluation.get("feedback", []):
+
+                    with st.expander(item.get("question", "Question")):
+
+                        st.write(
+                            f"**Your Answer:** {item.get('student_answer','')}"
+                        )
+
+                        st.write(
+                            f"**Result:** {item.get('result','')}"
+                        )
+
+                        st.write(
+                            f"**Comment:** {item.get('comment','')}"
+                        )
+
+            except Exception as e:
+                st.error(f"Evaluation Error: {e}")
+
+
+# ==================================================
+# RECALL PAGE
+# ==================================================
+
+elif page == "Recall Quiz":
+
+    st.header("📚 Recall Last Quiz")
+
+    try:
+
+        response = requests.post(
+            f"{API_URL}/process/",
+            json={"user_input": "recall"}
+        )
+
+        data = response.json()
+
+        quiz = data.get("result", {}).get("quiz", [])
+
+        if not quiz:
+            st.warning("No previous quiz found.")
+
+        else:
+            st.success(f"Retrieved {len(quiz)} questions")
+
+            for i, q in enumerate(quiz, start=1):
+
+                st.markdown(f"### Question {i}")
+                st.write(q.get("question", ""))
+
+                if q.get("answer"):
+
+                    with st.expander("Show Answer"):
+                        st.write(q["answer"])
+
+    except Exception as e:
+        st.error(f"Recall Error: {e}")
+
+
+# ==================================================
+# DASHBOARD PAGE
+# ==================================================
+
+elif page == "Progress Dashboard":
+
+    st.header("📊 Progress Dashboard")
+
+    try:
+
+        dashboard = requests.get(f"{API_URL}/dashboard").json()
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Total Quizzes",
+            dashboard.get("total_quizzes", 0)
+        )
+
+        col2.metric(
+            "Average Score %",
+            dashboard.get("average_score", 0)
+        )
+
+        col3.metric(
+            "Recommended Difficulty",
+            dashboard.get("recommended_difficulty", "medium")
+        )
+
+        st.caption(
+            "Difficulty is automatically adjusted using recent quiz performance."
+        )
+
+        # PERFORMANCE STATUS
+        avg = dashboard.get("average_score", 0)
+
+        if avg >= 80:
+            st.success("Excellent Performance 🚀")
+        elif avg >= 50:
+            st.warning("Good Progress 📈")
+        else:
+            st.error("Needs Improvement 📚")
+
+        st.subheader("Performance Trend")
+
+        scores = dashboard.get("scores", [])
+
+        if scores:
+
+            df = pd.DataFrame({
+                "Attempt": list(range(1, len(scores) + 1)),
+                "Score": list(reversed(scores))
+            })
+
+            chart_df = df.set_index("Attempt")
+
+            st.line_chart(
+                chart_df,
+                use_container_width=True
+            )
+
+        else:
+            st.info("No quiz history available.")
+
+    except Exception as e:
+        st.error(f"Dashboard Error: {e}")

@@ -15,13 +15,14 @@ def parse_user_input(user_input: str):
     # ---------------- INTENT DETECTION ----------------
 
     if any(w in text for w in [
-        "last quiz",
-        "previous quiz",
-        "my quiz",
-        "show quiz",
-        "recall quiz"
-    ]):
-        intent = "recall"
+    "recall",
+    "last quiz",
+    "previous quiz",
+    "my quiz",
+    "show quiz",
+    "recall quiz"
+]):
+     intent = "recall"
 
     elif any(w in text for w in [
         "evaluate",
